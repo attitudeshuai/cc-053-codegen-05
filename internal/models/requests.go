@@ -63,6 +63,25 @@ type CreateExportRequest struct {
 	Status     string `json:"status"`
 }
 
+type CreateQuotaPlanRequest struct {
+	DialectPointCode string `json:"dialect_point_code" binding:"required"`
+	RequiredCount    int    `json:"required_count" binding:"required,min=1"`
+	MinAge           int    `json:"min_age" binding:"min=0"`
+	MaxAge           int    `json:"max_age"`
+	GenderReq        string `json:"gender_req" binding:"omitempty,oneof=any male female other"`
+	CreatedBy        string `json:"created_by"`
+}
+
+type ApplySpeakerRequest struct {
+	SpeakerID int64  `json:"speaker_id" binding:"required"`
+	Operator  string `json:"operator" binding:"required"`
+}
+
+type WithdrawApplicationRequest struct {
+	Operator string `json:"operator" binding:"required"`
+	Reason   string `json:"reason"`
+}
+
 type SegmentQuery struct {
 	TaskID int64  `form:"task_id"`
 	Status string `form:"status"`

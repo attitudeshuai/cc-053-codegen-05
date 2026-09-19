@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -106,6 +107,74 @@ type ExportJob struct {
 	ErrorMessage string   `json:"error_message,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// QuotaPlan 发音人遴选名额方案：每个调查点需要多少人、年龄与性别要求
+type QuotaPlan struct {
+	ID               int64     `json:"id"`
+	DialectPointCode string    `json:"dialect_point_code"`
+	RequiredCount    int       `json:"required_count"`
+	MinAge           int       `json:"min_age"`
+	MaxAge           int       `json:"max_age"`
+	GenderReq        string    `json:"gender_req"` // any | male | female | other
+	CreatedBy        string    `json:"created_by"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// EligibilityFailures 按方案条件过筛，返回不满足的条目说明（空切片表示全部满足）
+func (p *QuotaPlan) EligibilityFailures(s *Speaker, currentYear int) []string {
+	var failures []string
+	age := currentYear - s.BirthYear
+	if age < p.MinAge || age > p.MaxAge {
+		failures = append(failures, fmt.Sprintf("年龄 %d 岁不在方案要求的 %d-%d 岁范围内", age, p.MinAge, p.MaxAge))
+	}
+	if p.GenderReq != "any" && s.Gender != p.GenderReq {
+		failures = append(failures, fmt.Sprintf("性别 %s 不符合方案要求的 %s", s.Gender, p.GenderReq))
+	}
+	return failures
+}
+
+// QuotaPlanWithStats 方案及其名额占用统计
+type QuotaPlanWithStats struct {
+	QuotaPlan
+	AcceptedCount int `json:"accepted_count"`
+	WaitingCount  int `json:"waiting_count"`
+}
+
+// SpeakerApplication 报名记录：一次报名经筛选后处于 录取/排队/退回/退出 之一
+type SpeakerApplication struct {
+	ID            int64     `json:"id"`
+	PlanID        int64     `json:"plan_id"`
+	SpeakerID     int64     `json:"speaker_id"`
+	Status        string    `json:"status"` // accepted | waiting | rejected | withdrawn
+	RejectReasons []string  `json:"reject_reasons"`
+	QueuePosition int       `json:"queue_position"`
+	Operator      string    `json:"operator"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// RosterEvent 名单变更事件：谁在什么时间把名单从什么状态改成什么状态（可回看）
+type RosterEvent struct {
+	ID            int64     `json:"id"`
+	PlanID        int64     `json:"plan_id"`
+	ApplicationID int64     `json:"application_id"`
+	SpeakerID     int64     `json:"speaker_id"`
+	EventType     string    `json:"event_type"` // accepted | waitlisted | rejected | withdrawn | promoted
+	FromStatus    string    `json:"from_status"`
+	ToStatus      string    `json:"to_status"`
+	Operator      string    `json:"operator"`
+	Reason        string    `json:"reason"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// RosterEntry 名单条目：报名记录 + 发音人公开信息
+type RosterEntry struct {
+	SpeakerApplication
+	SpeakerCodeName  string `json:"speaker_code_name"`
+	SpeakerGender    string `json:"speaker_gender"`
+	SpeakerBirthYear int    `json:"speaker_birth_year"`
 }
 
 // Pagination

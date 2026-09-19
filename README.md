@@ -43,6 +43,13 @@ PUT  /api/v1/segments/{id}/annotation     提交转写（乐观锁 version）
 POST /api/v1/segments/{id}/arbitrate      仲裁裁决
 GET  /api/v1/exports                      创建导出任务（异步）
 GET  /api/v1/exports/{job_id}             导出进度与下载链接
+POST /api/v1/quota-plans                  创建遴选方案（调查点人数、年龄区间、性别要求）
+GET  /api/v1/quota-plans                  方案列表（含已录取/排队统计）
+GET  /api/v1/quota-plans/{id}             方案详情
+POST /api/v1/quota-plans/{id}/applications 报名（按条件过筛，不符当场退回并逐条说明；名额满则进等待队列）
+GET  /api/v1/quota-plans/{id}/roster      当前名单（正式录取 + 等待队列）
+GET  /api/v1/quota-plans/{id}/events      名单变更历史（录取/退回/排队/退出/顶替，可回看）
+POST /api/v1/applications/{id}/withdraw   退出报名（释放名额，按等待队列先后自动顶替）
 ```
 
 ## 7. 数据模型
@@ -55,6 +62,9 @@ segment(id, recording_id, entry_id, start_ms, end_ms, object_key, snr_db, status
 annotation(id, segment_id, annotator, ipa, tone, note, decision /* pending|accept|reject|arbitrated */, version)
 arbitration(id, segment_id, winner_annotation_id, arbiter, reason, created_at)
 export_job(id, filter jsonb, status, progress, output_key, created_at)
+quota_plan(id, dialect_point_code, required_count, min_age, max_age, gender_req /* any|male|female|other */, created_by)
+speaker_application(id, plan_id, speaker_id, status /* accepted|waiting|rejected|withdrawn */, reject_reasons jsonb, queue_position, operator)
+roster_event(id, plan_id, application_id, speaker_id, event_type /* accepted|waitlisted|rejected|withdrawn|promoted */, from_status, to_status, operator, reason, created_at)
 ```
 
 ## 8. 关键实现点
@@ -63,6 +73,7 @@ export_job(id, filter jsonb, status, progress, output_key, created_at)
 - **切分流水线**：asynq（基于 Redis 的 Go 任务队列）分三级（transcode → vad_split → index），失败自动重试 3 次并写入死信表。
 - **去重**：同一 `speaker + entry` 若重复提交，保留最新但旧版进历史表，便于回退。
 - **隐私**：发音人真实姓名与联系方式仅存 `contact_ref`（外部系统 ID），平台内一律用代号。
+- **遴选名额**：报名与退出在同一事务内 `SELECT ... FOR UPDATE` 锁定方案行，并发报名不超录；同一发音人全局仅允许一条活跃报名（`accepted`/`waiting`），由部分唯一索引兜底，杜绝同时占两个点的名额；退出触发等待队列按序顶替，全部变更写 `roster_event` 审计表。
 
 ## 9. 技术约束与性能
 - 上传单文件上限 500MB，超过则要求分片；服务端不中转文件，只发预签名 URL。

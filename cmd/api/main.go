@@ -55,6 +55,7 @@ func main() {
 	annotationRepo := repository.NewAnnotationRepo(db)
 	arbitrationRepo := repository.NewArbitrationRepo(db)
 	exportRepo := repository.NewExportRepo(db)
+	quotaRepo := repository.NewQuotaRepo(db)
 
 	// Initialize MinIO service
 	minioSvc, err := services.NewMinIOService(cfg)
@@ -89,6 +90,7 @@ func main() {
 	annotationHandler := handlers.NewAnnotationHandler(annotationRepo, segmentRepo)
 	arbitrationHandler := handlers.NewArbitrationHandler(arbitrationRepo, annotationRepo, segmentRepo)
 	exportHandler := handlers.NewExportHandler(exportRepo, exportSvc)
+	quotaHandler := handlers.NewQuotaHandler(quotaRepo, speakerRepo)
 
 	// Setup Gin router
 	gin.SetMode(gin.ReleaseMode)
@@ -106,6 +108,14 @@ func main() {
 		v1.POST("/speakers", speakerHandler.Create)
 		v1.GET("/speakers/:id", speakerHandler.GetByID)
 		v1.GET("/speakers", speakerHandler.List)
+
+		v1.POST("/quota-plans", quotaHandler.CreatePlan)
+		v1.GET("/quota-plans", quotaHandler.ListPlans)
+		v1.GET("/quota-plans/:id", quotaHandler.GetPlan)
+		v1.POST("/quota-plans/:id/applications", quotaHandler.Apply)
+		v1.GET("/quota-plans/:id/roster", quotaHandler.GetRoster)
+		v1.GET("/quota-plans/:id/events", quotaHandler.ListEvents)
+		v1.POST("/applications/:id/withdraw", quotaHandler.Withdraw)
 
 		v1.POST("/wordlists", wordlistHandler.Create)
 		v1.GET("/wordlists/:id", wordlistHandler.GetByID)
