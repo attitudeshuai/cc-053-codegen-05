@@ -87,3 +87,47 @@ type HealthResponse struct {
 	Redis     string `json:"redis"`
 	MinIO     string `json:"minio"`
 }
+
+// ===== 发音人遴选与名额管理 =====
+
+type CriterionInput struct {
+	Gender       string `json:"gender" binding:"required,oneof=male female other"`
+	MinBirthYear int    `json:"min_birth_year" binding:"required"`
+	MaxBirthYear int    `json:"max_birth_year" binding:"required"`
+	Seats        int    `json:"seats" binding:"required,min=1"`
+}
+
+type CreateSurveyPointRequest struct {
+	Code     string           `json:"code" binding:"required"`
+	Name     string           `json:"name" binding:"required"`
+	Remark   string           `json:"remark"`
+	Actor    string           `json:"actor" binding:"required"` // 谁创建的名额方案
+	Criteria []CriterionInput `json:"criteria" binding:"required,min=1,dive"`
+}
+
+type UpdateQuotaRequest struct {
+	Criteria []CriterionInput `json:"criteria" binding:"required,min=1,dive"`
+	Remark   *string          `json:"remark"` // 不传则保留原备注
+	Actor    string           `json:"actor" binding:"required"` // 谁改的名额
+}
+
+type ApplyPointRequest struct {
+	SpeakerID int64  `json:"speaker_id" binding:"required"`
+	Actor     string `json:"actor" binding:"required"` // 经办人（谁处理的报名）
+}
+
+type WithdrawPointRequest struct {
+	SpeakerID int64  `json:"speaker_id" binding:"required"`
+	Actor     string `json:"actor" binding:"required"` // 谁操作的退出/顶替
+	Reason    string `json:"reason"`
+}
+
+type RosterQuery struct {
+	Status string `form:"status"` // enrolled | waiting | withdrawn | rejected
+	Pagination
+}
+
+type EventQuery struct {
+	EventType string `form:"event_type"`
+	Pagination
+}

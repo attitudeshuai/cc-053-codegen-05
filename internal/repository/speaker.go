@@ -35,6 +35,19 @@ func (r *SpeakerRepo) GetByID(id int64) (*models.Speaker, error) {
 	return s, nil
 }
 
+// GetByIDTx 事务内读取发音人（遴选过筛要用最新档案）
+func (r *SpeakerRepo) GetByIDTx(tx *sql.Tx, id int64) (*models.Speaker, error) {
+	s := &models.Speaker{}
+	err := tx.QueryRow(
+		`SELECT id, code_name, birth_year, gender, dialect_point_code, occupation, years_away, contact_ref, created_at, updated_at
+		 FROM speakers WHERE id=$1`, id,
+	).Scan(&s.ID, &s.CodeName, &s.BirthYear, &s.Gender, &s.DialectPointCode, &s.Occupation, &s.YearsAway, &s.ContactRef, &s.CreatedAt, &s.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
 func (r *SpeakerRepo) List(offset, limit int) ([]*models.Speaker, int, error) {
 	var total int
 	err := r.db.QueryRow(`SELECT COUNT(*) FROM speakers`).Scan(&total)

@@ -55,6 +55,8 @@ func main() {
 	annotationRepo := repository.NewAnnotationRepo(db)
 	arbitrationRepo := repository.NewArbitrationRepo(db)
 	exportRepo := repository.NewExportRepo(db)
+	surveyPointRepo := repository.NewSurveyPointRepo(db)
+	applicationRepo := repository.NewApplicationRepo(db)
 
 	// Initialize MinIO service
 	minioSvc, err := services.NewMinIOService(cfg)
@@ -89,6 +91,10 @@ func main() {
 	annotationHandler := handlers.NewAnnotationHandler(annotationRepo, segmentRepo)
 	arbitrationHandler := handlers.NewArbitrationHandler(arbitrationRepo, annotationRepo, segmentRepo)
 	exportHandler := handlers.NewExportHandler(exportRepo, exportSvc)
+
+	// 发音人遴选与名额管理
+	recruitmentSvc := services.NewRecruitmentService(db, surveyPointRepo, applicationRepo, speakerRepo)
+	surveyPointHandler := handlers.NewSurveyPointHandler(surveyPointRepo, applicationRepo, recruitmentSvc)
 
 	// Setup Gin router
 	gin.SetMode(gin.ReleaseMode)
@@ -127,6 +133,16 @@ func main() {
 		v1.POST("/exports", exportHandler.Create)
 		v1.GET("/exports/:id", exportHandler.GetByID)
 		v1.GET("/exports", exportHandler.List)
+
+		// 发音人遴选与名额管理
+		v1.POST("/survey-points", surveyPointHandler.Create)
+		v1.GET("/survey-points", surveyPointHandler.List)
+		v1.GET("/survey-points/:id", surveyPointHandler.GetByID)
+		v1.PUT("/survey-points/:id/quota", surveyPointHandler.UpdateQuota)
+		v1.POST("/survey-points/:id/applications", surveyPointHandler.Apply)
+		v1.POST("/survey-points/:id/withdraw", surveyPointHandler.Withdraw)
+		v1.GET("/survey-points/:id/roster", surveyPointHandler.Roster)
+		v1.GET("/survey-points/:id/events", surveyPointHandler.Events)
 	}
 
 	// Create HTTP server with proper timeouts for large file uploads

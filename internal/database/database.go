@@ -135,6 +135,49 @@ func RunMigrations(db *sql.DB) error {
 			changed_by VARCHAR(200) NOT NULL,
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS survey_points (
+			id BIGSERIAL PRIMARY KEY,
+			code VARCHAR(50) NOT NULL UNIQUE,
+			name VARCHAR(200) NOT NULL,
+			quota_total INT NOT NULL DEFAULT 0 CHECK (quota_total >= 0),
+			remark TEXT DEFAULT '',
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS quota_criteria (
+			id BIGSERIAL PRIMARY KEY,
+			point_id BIGINT NOT NULL REFERENCES survey_points(id) ON DELETE CASCADE,
+			gender VARCHAR(10) NOT NULL,
+			min_birth_year INT NOT NULL DEFAULT 1900,
+			max_birth_year INT NOT NULL DEFAULT 2999,
+			seats INT NOT NULL DEFAULT 1 CHECK (seats > 0),
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS point_applications (
+			id BIGSERIAL PRIMARY KEY,
+			point_id BIGINT NOT NULL REFERENCES survey_points(id),
+			speaker_id BIGINT NOT NULL REFERENCES speakers(id),
+			criterion_id BIGINT REFERENCES quota_criteria(id) ON DELETE SET NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'enrolled' CHECK (status IN ('enrolled','waiting','withdrawn','rejected')),
+			reject_reason TEXT DEFAULT '',
+			queue_seq BIGINT,
+			enrolled_at TIMESTAMPTZ,
+			withdrawn_at TIMESTAMPTZ,
+			rejected_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS roster_events (
+			id BIGSERIAL PRIMARY KEY,
+			point_id BIGINT NOT NULL REFERENCES survey_points(id),
+			application_id BIGINT REFERENCES point_applications(id),
+			speaker_id BIGINT,
+			event_type VARCHAR(30) NOT NULL CHECK (event_type IN ('applied','enrolled','rejected','entered_waitlist','withdrawn','promoted','quota_changed','criteria_changed')),
+			detail JSONB NOT NULL DEFAULT '{}',
+			actor VARCHAR(200) NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_wordlist ON tasks(wordlist_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_speaker ON tasks(speaker_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_recordings_task ON recordings(task_id)`,
@@ -142,6 +185,11 @@ func RunMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_segments_status ON segments(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_annotations_segment ON annotations(segment_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_arbitrations_segment ON arbitrations(segment_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_applications_enrolled_speaker ON point_applications(speaker_id) WHERE status IN ('enrolled','waiting')`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_applications_point_speaker_active ON point_applications(point_id, speaker_id) WHERE status IN ('enrolled','waiting')`,
+		`CREATE INDEX IF NOT EXISTS idx_applications_point_status ON point_applications(point_id, status)`,
+		`CREATE INDEX IF NOT EXISTS idx_applications_speaker ON point_applications(speaker_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_roster_point_time ON roster_events(point_id, created_at)`,
 	}
 
 	for _, m := range migrations {

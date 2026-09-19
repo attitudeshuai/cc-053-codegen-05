@@ -43,6 +43,16 @@ PUT  /api/v1/segments/{id}/annotation     提交转写（乐观锁 version）
 POST /api/v1/segments/{id}/arbitrate      仲裁裁决
 GET  /api/v1/exports                      创建导出任务（异步）
 GET  /api/v1/exports/{job_id}             导出进度与下载链接
+
+# 发音人遴选与名额管理
+POST /api/v1/survey-points                建调查点并定名额（性别+出生年份区间+名额数）
+GET  /api/v1/survey-points                调查点列表
+GET  /api/v1/survey-points/{id}           调查点详情（含名额条件）
+PUT  /api/v1/survey-points/{id}/quota     调整名额方案（容不下现有入选人则整体拒绝）
+POST /api/v1/survey-points/{id}/applications   报名：当场过筛 → 入选 / 排队 / 退回(写明差在哪条)
+POST /api/v1/survey-points/{id}/withdraw        退出；自动按排队顺序顶补同条件队首
+GET  /api/v1/survey-points/{id}/roster?status= 名单（enrolled/waiting/withdrawn/rejected）
+GET  /api/v1/survey-points/{id}/events?event_type= 名单变更流水（谁、什么时候、改了什么）
 ```
 
 ## 7. 数据模型
@@ -55,7 +65,29 @@ segment(id, recording_id, entry_id, start_ms, end_ms, object_key, snr_db, status
 annotation(id, segment_id, annotator, ipa, tone, note, decision /* pending|accept|reject|arbitrated */, version)
 arbitration(id, segment_id, winner_annotation_id, arbiter, reason, created_at)
 export_job(id, filter jsonb, status, progress, output_key, created_at)
+
+-- 发音人遴选与名额管理
+survey_point(id, code unique, name, quota_total /* = 各条件 seats 之和 */, remark)
+quota_criterion(id, point_id, gender, min_birth_year, max_birth_year, seats)
+   -- 一条 = “某性别 + 出生年份在 [min,max] 内，需要 seats 人”
+point_application(id, point_id, speaker_id, criterion_id,
+   status /* enrolled|waiting|withdrawn|rejected */, reject_reason, queue_seq,
+   enrolled_at, withdrawn_at, rejected_at)
+roster_event(id, point_id, application_id, speaker_id,
+   event_type /* applied|enrolled|rejected|entered_waitlist|withdrawn|promoted|quota_changed|criteria_changed */,
+   detail jsonb /* 退回原因/改前改后快照 */, actor, created_at)
+-- 跨点唯一：(speaker_id) WHERE status IN (enrolled,waiting) —— 同一人不能同时占两个点
+-- 同点唯一：(point_id, speaker_id) WHERE status IN (enrolled,waiting) —— 不能重复报名
 ```
+
+### 7.1 遴选与名额规则
+- **先定条件再收人**：每个调查点按「性别 + 出生年份区间 + 名额数」建若干条名额条件，`quota_total` 自动汇总。
+- **当场过筛**：报名时比对发音人档案的 `gender` / `birth_year`；性别不符、年龄不符分别给出明确中文原因（差在哪一条），不合规者落 `rejected` 记录但不占名额。
+- **满员排队**：符合条件但该类别名额已满 → 进等待队列（`queue_seq` 全局递增、不复用）。
+- **一人一点**：部分唯一索引保证一个发音人在任意调查点处于 `enrolled/waiting` 时不能再占第二个点（排队也视为占位）。
+- **退出顶替**：入选者退出（事务内 `SELECT ... FOR UPDATE` 锁定调查点）后，按 `queue_seq` 找队首中性别与出生年份仍符合空出名额类别的人，原地转 `enrolled`；排队者退出不触发顶替。
+- **名额调整**：替换名额条件时，现有入选人按入选先后重新落位；新方案容纳不下任何一人则整个事务回滚（409，方案不变）；扩容产生空位时自动顶补排队者。
+- **全程留痕**：`roster_event` 记录每次报名/入选/退回/入队/退出/顶替/名额变更，含经办人 `actor` 与时间戳；名额变更事件的 `detail` 保存改前改后快照，支持回看名单改过几回。
 
 ## 8. 关键实现点
 - **并发标注**：`segment` 上放乐观锁 `version`，两人同时改时后者收到 409，前端提示「已被他人更新」。
